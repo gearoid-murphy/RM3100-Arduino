@@ -16,23 +16,23 @@
 //options
 #define initialCC 200 // Set the cycle count
 #define singleMode 0 //0 = use continuous measurement mode; 1 = use single measurement mode
-#define useDRDYPin 1 //0 = not using DRDYPin ; 1 = using DRDYPin to wait for data
+#define useDRDYPin 0 //0 = not using DRDYPin ; 1 = using DRDYPin to wait for data
 
 uint8_t revid;
 uint16_t cycleCount;
 float gain;
 
 void setup() {
-  pinMode(PIN_DRDY, INPUT);  
+  pinMode(PIN_DRDY, INPUT);
   pinMode(PIN_CS, OUTPUT);
   digitalWrite(PIN_CS, HIGH);
   SPI.begin(); // Initiate the SPI library
-  SPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE0));  
+  SPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE0));
   Serial.begin(9600); //set baud rate to 9600
   delay(100);
 
   revid = readReg(RM3100_REVID_REG);
-  
+
   Serial.print("REVID ID = 0x"); //REVID ID should be 0x22
   Serial.println(revid, HEX);
 
@@ -67,13 +67,13 @@ void loop() {
   uint8_t x2,x1,x0,y2,y1,y0,z2,z1,z0;
 
   //wait until data is ready using 1 of two methods (chosen in options at top of code)
-  if(useDRDYPin){ 
+  if(useDRDYPin){
     while(digitalRead(PIN_DRDY) == LOW); //check RDRY pin
   }
   else{
     while((readReg(RM3100_STATUS_REG) & 0x80) != 0x80); //read internal status register
   }
-  
+
   //read measurements
   digitalWrite(PIN_CS, LOW);
   delay(100);
@@ -81,15 +81,15 @@ void loop() {
   x2 = SPI.transfer(0xA5);
   x1 = SPI.transfer(0xA6);
   x0 = SPI.transfer(0xA7);
-  
+
   y2 = SPI.transfer(0xA8);
   y1 = SPI.transfer(0xA9);
   y0 = SPI.transfer(0xAA);
-  
+
   z2 = SPI.transfer(0xAB);
   z1 = SPI.transfer(0xAC);
   z0 = SPI.transfer(0);
-  
+
   digitalWrite(PIN_CS, HIGH);
 
   //special bit manipulation since there is not a 24 bit signed int data type
@@ -131,7 +131,7 @@ void loop() {
   //Magnitude should be around 45 uT (+/- 15 uT)
   Serial.print("Magnitude(uT):");
   Serial.println(uT);
-  Serial.println();    
+  Serial.println();
 }
 
 //addr is the 7 bit value of the register's address (without the R/W bit)
@@ -147,7 +147,7 @@ uint8_t readReg(uint8_t addr){
 
 //addr is the 7 bit (No r/w bit) value of the internal register's address, data is 8 bit data being written
 void writeReg(uint8_t addr, uint8_t data){
-  digitalWrite(PIN_CS, LOW); 
+  digitalWrite(PIN_CS, LOW);
   delay(100);
   SPI.transfer(addr & 0x7F); //AND with 0x7F to make first bit(read/write bit) low for write
   SPI.transfer(data);
@@ -158,8 +158,8 @@ void writeReg(uint8_t addr, uint8_t data){
 void changeCycleCount(uint16_t newCC){
   uint8_t CCMSB = (newCC & 0xFF00) >> 8; //get the most significant byte
   uint8_t CCLSB = newCC & 0xFF; //get the least significant byte
-    
-  digitalWrite(PIN_CS, LOW); 
+
+  digitalWrite(PIN_CS, LOW);
   delay(100);
   SPI.transfer(RM3100_CCX1_REG & 0x7F); //AND with 0x7F to make first bit(read/write bit) low for write
   SPI.transfer(CCMSB);  //write new cycle count to ccx1
