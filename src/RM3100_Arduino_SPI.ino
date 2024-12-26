@@ -26,6 +26,7 @@ void setup() {
   pinMode(PIN_DRDY, INPUT);
   pinMode(PIN_CS, OUTPUT);
   digitalWrite(PIN_CS, HIGH);
+
   SPI.begin(); // Initiate the SPI library
   SPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE0));
   Serial.begin(9600); //set baud rate to 9600
@@ -46,99 +47,49 @@ void setup() {
 
   gain = (0.3671 * (float)cycleCount) + 1.5; //linear equation to calculate the gain from cycle count
 
-  Serial.print("Gain = "); //display gain; default gain should be around 75 for the default cycle count of 200
+  // default gain should be around 75 for the default cycle count of 200
+  Serial.print("Gain = ");
   Serial.println(gain);
 
-  if (singleMode){
-    //set up single measurement mode
-    writeReg(RM3100_CMM_REG, 0);
-    writeReg(RM3100_POLL_REG, 0x70);
-  }
-  else{
-    // Enable transmission to take continuous measurement with Alarm functions off
-    writeReg(RM3100_CMM_REG, 0x79);
-  }
+  // Enable continuous measurement on z-axis
+  writeReg(RM3100_CMM_REG, 0x49);
 }
 
 void loop() {
-  long x = 0;
-  long y = 0;
   long z = 0;
-  uint8_t x2,x1,x0,y2,y1,y0,z2,z1,z0;
+  uint8_t z2,z1,z0;
 
-  //wait until data is ready using 1 of two methods (chosen in options at top of code)
-  if(useDRDYPin){
-    while(digitalRead(PIN_DRDY) == LOW); //check RDRY pin
-  }
-  else{
-    while((readReg(RM3100_STATUS_REG) & 0x80) != 0x80); //read internal status register
-  }
+  // Check if data is ready
+  while((readReg(RM3100_STATUS_REG) & 0x80) != 0x80);
 
   //read measurements
   digitalWrite(PIN_CS, LOW);
-  delay(100);
-  SPI.transfer(0xA4);
-  x2 = SPI.transfer(0xA5);
-  x1 = SPI.transfer(0xA6);
-  x0 = SPI.transfer(0xA7);
 
-  y2 = SPI.transfer(0xA8);
-  y1 = SPI.transfer(0xA9);
-  y0 = SPI.transfer(0xAA);
-
-  z2 = SPI.transfer(0xAB);
-  z1 = SPI.transfer(0xAC);
-  z0 = SPI.transfer(0);
+  // Send read address
+  SPI.transfer(0xAA);
+  // Clock out the 3 result bytes with a dummy address
+  z2 = SPI.transfer(0x0);
+  z1 = SPI.transfer(0x0);
+  z0 = SPI.transfer(0x0);
 
   digitalWrite(PIN_CS, HIGH);
 
-  //special bit manipulation since there is not a 24 bit signed int data type
-  if (x2 & 0x80){
-      x = 0xFF;
-  }
-  if (y2 & 0x80){
-      y = 0xFF;
-  }
+  // special bit manipulation since there is not a 24 bit signed int data type
   if (z2 & 0x80){
       z = 0xFF;
   }
 
   //format results into single 32 bit signed value
-  x = (x * 256 * 256 * 256) | (int32_t)(x2) * 256 * 256 | (uint16_t)(x1) * 256 | x0;
-  y = (y * 256 * 256 * 256) | (int32_t)(y2) * 256 * 256 | (uint16_t)(y1) * 256 | y0;
   z = (z * 256 * 256 * 256) | (int32_t)(z2) * 256 * 256 | (uint16_t)(z1) * 256 | z0;
 
-  //calculate magnitude of results
-  double uT = sqrt(pow(((float)(x)/gain),2) + pow(((float)(y)/gain),2)+ pow(((float)(z)/gain),2));
-
-  //display results
-  Serial.print("Data in counts:");
-  Serial.print("   X:");
-  Serial.print(x);
-  Serial.print("   Y:");
-  Serial.print(y);
-  Serial.print("   Z:");
-  Serial.println(z);
-
-  Serial.print("Data in microTesla(uT):");
-  Serial.print("   X:");
-  Serial.print((float)(x)/gain);
-  Serial.print("   Y:");
-  Serial.print((float)(y)/gain);
-  Serial.print("   Z:");
   Serial.println((float)(z)/gain);
-
-  //Magnitude should be around 45 uT (+/- 15 uT)
-  Serial.print("Magnitude(uT):");
-  Serial.println(uT);
-  Serial.println();
+  // Serial.println(z);
 }
 
 //addr is the 7 bit value of the register's address (without the R/W bit)
 uint8_t readReg(uint8_t addr){
   uint8_t data = 0;
   digitalWrite(PIN_CS, LOW);
-  delay(100);
   SPI.transfer(addr | 0x80); //OR with 0x80 to make first bit(read/write bit) high for read
   data = SPI.transfer(0);
   digitalWrite(PIN_CS, HIGH);
@@ -148,7 +99,6 @@ uint8_t readReg(uint8_t addr){
 //addr is the 7 bit (No r/w bit) value of the internal register's address, data is 8 bit data being written
 void writeReg(uint8_t addr, uint8_t data){
   digitalWrite(PIN_CS, LOW);
-  delay(100);
   SPI.transfer(addr & 0x7F); //AND with 0x7F to make first bit(read/write bit) low for write
   SPI.transfer(data);
   digitalWrite(PIN_CS, HIGH);
@@ -160,7 +110,6 @@ void changeCycleCount(uint16_t newCC){
   uint8_t CCLSB = newCC & 0xFF; //get the least significant byte
 
   digitalWrite(PIN_CS, LOW);
-  delay(100);
   SPI.transfer(RM3100_CCX1_REG & 0x7F); //AND with 0x7F to make first bit(read/write bit) low for write
   SPI.transfer(CCMSB);  //write new cycle count to ccx1
   SPI.transfer(CCLSB);  //write new cycle count to ccx0
